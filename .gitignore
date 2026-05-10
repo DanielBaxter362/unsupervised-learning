@@ -73,3 +73,5 @@ Testing/
 *.user
 *.vsidx
 *.suo
+
+*.csv
