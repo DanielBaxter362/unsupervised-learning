@@ -5,6 +5,9 @@
 #include <filesystem>
 #include <random>
 #include <algorithm>
+#include <iomanip>
+
+constexpr std::size_t maxPrintEntryLen = 15;
 
 struct CSVData {
     std::vector<std::string> headers;
@@ -175,16 +178,16 @@ CSVData readCSV(std::ifstream& stream) {
 
     // Check shape of rows
     if (rows.empty()) {
-        throw std::invalid_argument("CSV has no input data"); 
+        throw std::invalid_argument("CSV has no input data rows"); 
     }   
     else {
-        int rowSize = rows[0].size();
+        int rowSize = headers.size();
 
         if (rowSize < 2) { throw std::invalid_argument("CSV must have two or more columns of data") };
         
         for (std::vector<int>& row : rows) {
             if (row.size() != rowSize) {
-                throw std::invalid_argument("CSV rows must be the same length");
+                throw std::invalid_argument("CSV rows must have consistent length");
             }   
         }   
     } 
@@ -192,6 +195,29 @@ CSVData readCSV(std::ifstream& stream) {
     data.headers = parseCSVLine(headers);
     data.rows = rows;
     return data;
+}
+
+void printStrRow(std::vector<std::string>& row) {
+    for (size_t i = 0; i < row.size(); i++) {
+        if (i != 0) { std::cout << ", " };
+
+        if (row[i].size() <= maxPrintEntryLen) {
+            std::cout << row[i] << std::left << std::setw(maxPrintEntryLen);
+            return;
+        };
+     
+        std::cout << row[i].substr(0, maxPrintEntryLen - 3) << "...";
+    }
+}
+
+void printCSV(CSVData& data) {
+    std::vector<std::string> row = data.headers;
+    printStrRow(row);
+
+    for (size_t i = 0; i < data.rows.size(); i++) {
+        std::transform(data.rows[i].begin(), data.rows[i].end(), row.begin(), std::to_string);
+        printStrRow(row);
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -215,31 +241,15 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 	
-	CSVData data = parseCSV(csvin);
-
-	// Check shape of entries
-	if (entries.empty()) {
-		std::cerr << "No input data: " << filename << "\n";
-		return 1;
-	}
-	else {
-		int entrySize = entries[0].size();
-
-		for (std::vector<int>& entry : entries) {
-			if (entry.size() != entrySize) {
-				std::cerr << "Inconsistent row size in input data\n";
-				return 1;
-			}
-		}
-	}
-
     try {
-	    std::vector<int> out = cluster(entries, 2);
+	    CSVData data = parseCSV(csvin);
     } 
     catch (const std::invalid_argument& e) {
-        std::cerr << "Error when parsing CSV: " << e.what() << std::endl;
-        return 1;  
+        std::cerr << "Error parsing CSV: " << e.what() << std::endl;
+        return 1;
     }
+
+	std::vector<int> out = cluster(entries, 2);
 
 	//todo: create new csv containing the input data and the cluster each row belongs to
 }
