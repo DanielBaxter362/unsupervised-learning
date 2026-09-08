@@ -11,6 +11,7 @@ struct CSVData {
     std::vector<std::string> headers;
     std::vector<std::vector<int>> rows;
     std::size_t maxPrintEntryLen = 15;
+    std::vector<int> clusters;
 };
 
 std::vector<int> cluster(const std::vector<std::vector<int>>& data, int k) {
@@ -29,8 +30,8 @@ std::vector<int> cluster(const std::vector<std::vector<int>>& data, int k) {
 		for (const std::vector<int>& row : data) {
 			int val = row[i];
 
-			if (val < lowest) { lowest = val; };
-			if (val > highest) { highest = val; };
+			if (val < lowest) { lowest = val; }
+			if (val > highest) { highest = val; }
 		}
 
 		centroidLowerBounds.push_back(lowest);
@@ -49,6 +50,7 @@ std::vector<int> cluster(const std::vector<std::vector<int>>& data, int k) {
 		}
 	}
 
+    /* Debug:
 	for (size_t i = 0; i < entrySize; i++) {
 		std::cout << "Column: " << i + 1 << std::endl;
 		std::cout << "Largest: " << centroidUpperBounds[i] << std::endl;
@@ -58,7 +60,7 @@ std::vector<int> cluster(const std::vector<std::vector<int>>& data, int k) {
 			std::cout << "Centroid " << j + 1 << ": " << centroids[j][i] << std::endl;
 		}
 		std::cout << std::endl;
-	}
+	} */
 
 	// Allocate and update clusters until no points are changed
 	bool changed = true;
@@ -82,7 +84,7 @@ std::vector<int> cluster(const std::vector<std::vector<int>>& data, int k) {
 			}
 
 			int newCluster = std::distance(dist.begin(), std::min_element(dist.begin(), dist.end()));
-			if (newCluster != clusters[i]) { changed = true; };
+			if (newCluster != clusters[i]) { changed = true; }
 			clusters[i] = newCluster;
 		}
 
@@ -92,14 +94,14 @@ std::vector<int> cluster(const std::vector<std::vector<int>>& data, int k) {
 			int entryCount = 0;
 
 			for (size_t j = 0; j < numEntries; j++) {
-				if (clusters[j] != i) { continue; };
+				if (clusters[j] != i) { continue; }
 
 				entryCount++;
 				for (size_t l = 0; l < entrySize; l++) {
 					positions[l] += data[j][l];
 				}
 			}
-			if (entryCount == 0) { continue; };
+			if (entryCount == 0) { continue; }
 
 			for (int& num : positions) {
 				num = num / entryCount;
@@ -116,15 +118,19 @@ std::string trimWhitespace(const std::string& str) {
     size_t start = str.find_first_not_of(" \t\r\n");
     size_t end = str.find_last_not_of(" \t\r\n");
             
-    if (start == std::string::npos) {
-        return ""; 
-    };  
+    if (start == std::string::npos) { return ""; }  
         
     return str.substr(start, end - start + 1);
 }   
 
+bool validSize(std::string item) {
+    if (item.size() == 0 || item.size() > 15) { return false; } 
+
+    return true;
+}
+
 std::vector<std::string> parseCSVLine(const std::string& line) {
-    std::vector<std::string> entry;
+    std::vector<std::string> row;
     std::string item;
     bool inQuotes = false;
     
@@ -132,7 +138,9 @@ std::vector<std::string> parseCSVLine(const std::string& line) {
         char c = line[i];
         
         if (c == ',' && !inQuotes) {
-            entry.push_back(item);
+            if (!validSize(item)) { throw std::invalid_argument("Values & headers must be between 0 and 16 characters"); }
+            
+            row.push_back(item);
             item.clear();
         }
         else if (c == '"') {
@@ -142,54 +150,45 @@ std::vector<std::string> parseCSVLine(const std::string& line) {
             item += c;
         }
         
-        if (entry.size() > 100) { throw std::invalid_argument("Too many fields"); };
+        if (row.size() > 100) { throw std::invalid_argument("Must have 100 or fewer fields"); }
     }
     
-    entry.push_back(item);
-    std::transform(entry.begin(), entry.end(), entry.begin(), trimWhitespace);
-    return entry;
+    if (!validSize(item)) { throw std::invalid_argument("Values & headers must be between 0 and 16 characters"); }
+
+    row.push_back(item);
+    std::transform(row.begin(), row.end(), row.begin(), trimWhitespace);
+    return row;
 }
 
 CSVData readCSV(std::ifstream& stream) {
+    int maxLen = 0;
     CSVData data;
     std::string line;
-    
-    // Still a bug where header length is not checked and cannot set maxLen
 
     // Get headers
     std::getline(stream, line);
     
-    if (line.empty()) { throw std::invalid_argument("Empty CSV provided"); };
+    if (line.empty()) { throw std::invalid_argument("Empty CSV provided"); }
     std::vector<std::string> headers = parseCSVLine(line);
 
+    for (const std::string& header : headers) {
+        if (header.size() > maxLen) { maxLen = header.size(); }
+    } 
+
     // Get data rows
-    std::size_t maxLen = 0;
     std::vector<std::vector<int>> rows;
     std::vector<int> row;
 
     while (std::getline(stream, line)) {
         row.clear();
            
-        for (std::string& entry : parseCSVLine(line)) {
-            std::size_t size = entry.size();
+        for (std::string& item : parseCSVLine(line)) {
+            for (char c : item) {
+                if (!isdigit(c)) { throw std::invalid_argument("Invalid character in input data item"); }
+            }
 
-            if (size == 0) {
-                throw std::invalid_argument("Empty value in input CSV");
-            }
-            else if (size > 15) {
-                throw std::invalid_argument("Values must be 15 digits or less");
-            }
-            else if (size > maxLen) {
-                maxLen = size;
-            }
-                
-            // Allow only numbers
-            for (char c : entry) {
-                if (!isdigit(c)) {
-                    throw std::invalid_argument("Invalid character in input data item");
-                }   
-            }   
-            row.push_back(std::stoi(entry));
+            if (item.size() > maxLen) { maxLen = item.size(); }
+            row.push_back(std::stoi(item));
         }   
         rows.push_back(row);   
     }
@@ -201,7 +200,7 @@ CSVData readCSV(std::ifstream& stream) {
     else {
         int rowSize = headers.size();
 
-        if (rowSize < 2) { throw std::invalid_argument("CSV must have two or more columns of data"); };
+        if (rowSize < 2) { throw std::invalid_argument("CSV must have two or more columns of data"); }
         
         for (std::vector<int>& row : rows) {
             if (row.size() != rowSize) {
@@ -218,25 +217,31 @@ CSVData readCSV(std::ifstream& stream) {
 
 void printStrRow(const std::vector<std::string>& row, const std::size_t& length) {
     for (size_t i = 0; i < row.size(); i++) {
-        if (i != 0) { std::cout << ", "; };
+        if (i != 0) { std::cout << " | "; }
 
         if (row[i].size() <= length) {
             std::cout << std::left << std::setw(length) << row[i];
             continue;
-        };
+        }
      
         std::cout << row[i];
     }
 }
 
 void printCSV(const CSVData& data) {
+    bool clustered = !data.clusters.empty();
     std::vector<std::string> row = data.headers;
+    if (clustered) { row.push_back("C"); }
+
     printStrRow(row, data.maxPrintEntryLen);
-    std::cout << std::endl;
+
+    std::cout << std::endl << std::string((data.maxPrintEntryLen * row.size()) + (row.size() * 3 - 1), '=') << std::endl;
 
     for (size_t i = 0; i < data.rows.size(); i++) {
         std::transform(data.rows[i].begin(), data.rows[i].end(), row.begin(),
             [](int x) { return std::to_string(x); });
+
+        if (clustered) { row.back() = std::to_string(data.clusters[i]); }
 
         printStrRow(row, data.maxPrintEntryLen);        
         std::cout << std::endl;
@@ -275,8 +280,9 @@ int main(int argc, char* argv[]) {
     }
     
     printCSV(data);
+    std::cout << std::endl;
 
-    //std::vector<int> out = cluster(entries, 2);
+    data.clusters = cluster(data.rows, 2);
 
-	//todo: create new csv containing the input data and the cluster each row belongs to
+    printCSV(data);
 }
